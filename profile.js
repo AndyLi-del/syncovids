@@ -5,9 +5,11 @@ import { ref, listAll, getDownloadURL, getMetadata } from "https://www.gstatic.c
 
 const signinBtn = document.getElementById('signin-btn');
 const exploreBtn = document.getElementById('explore-btn');
+const messagesBtn = document.getElementById('messages-btn');
 const videosBtn = document.getElementById('videos-btn');
 const dashboardBtn = document.getElementById('dashboard-btn');
 const logoutBtn = document.getElementById('logout-btn');
+const sendMessageBtn = document.getElementById('send-message-btn');
 const profileAvatar = document.getElementById('profile-avatar');
 const profileUsername = document.getElementById('profile-username');
 const profileJoined = document.getElementById('profile-joined');
@@ -73,9 +75,16 @@ onAuthStateChanged(auth, async (user) => {
         currentUser = user;
         signinBtn.style.display = 'none';
         exploreBtn.style.display = 'inline-block';
+        messagesBtn.style.display = 'inline-block';
         videosBtn.style.display = 'inline-block';
         dashboardBtn.style.display = 'inline-block';
         logoutBtn.style.display = 'inline-block';
+
+        // Show send message button if viewing another user's profile
+        if (profileUserId !== currentUser.uid && sendMessageBtn) {
+            sendMessageBtn.style.display = 'inline-flex';
+            sendMessageBtn.href = `messages.html?uid=${profileUserId}`;
+        }
 
         // Ensure user exists in Firestore with uid, time, username and email
         await syncUserToFirestore(user);
