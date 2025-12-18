@@ -52,6 +52,47 @@ function getMediaType(filename) {
     return null;
 }
 
+// Media player initialization helpers
+function hideAllMediaElements() {
+    video.style.display = 'none';
+    audio.style.display = 'none';
+    image.style.display = 'none';
+}
+
+function initializePlaybackMedia(element, sourceElement, url) {
+    element.style.display = 'block';
+    sourceElement.src = url;
+    element.load();
+    mediaPlayer = element;
+    playerControls.style.display = 'block';
+    setupMediaEventListeners();
+}
+
+function initializeImageDisplay(url) {
+    image.style.display = 'block';
+    image.src = url;
+    mediaPlayer = null;
+    playerControls.style.display = 'none';
+    bigPlayBtn.style.display = 'none';
+}
+
+function initializeMediaPlayer(url) {
+    hideAllMediaElements();
+
+    switch (currentMediaType) {
+        case 'video':
+            initializePlaybackMedia(video, videoSource, url);
+            break;
+        case 'audio':
+            initializePlaybackMedia(audio, audioSource, url);
+            videoWrapper.style.backgroundColor = '#1a1a1a';
+            break;
+        case 'image':
+            initializeImageDisplay(url);
+            break;
+    }
+}
+
 // Auth check
 onAuthStateChanged(auth, async (user) => {
     if (user) {
@@ -92,36 +133,7 @@ async function loadVideo() {
         videoMeta.textContent = `Uploaded: ${uploadDate} • Size: ${fileSize}`;
 
         // Show appropriate player based on media type
-        if (currentMediaType === 'video') {
-            video.style.display = 'block';
-            audio.style.display = 'none';
-            image.style.display = 'none';
-            videoSource.src = url;
-            video.load();
-            mediaPlayer = video;
-            playerControls.style.display = 'block';
-            setupMediaEventListeners();
-        } else if (currentMediaType === 'audio') {
-            video.style.display = 'none';
-            audio.style.display = 'block';
-            image.style.display = 'none';
-            audioSource.src = url;
-            audio.load();
-            mediaPlayer = audio;
-            playerControls.style.display = 'block';
-            setupMediaEventListeners();
-            // Show audio visualization
-            videoWrapper.style.backgroundColor = '#1a1a1a';
-        } else if (currentMediaType === 'image') {
-            video.style.display = 'none';
-            audio.style.display = 'none';
-            image.style.display = 'block';
-            image.src = url;
-            mediaPlayer = null;
-            // Hide playback controls for images
-            playerControls.style.display = 'none';
-            bigPlayBtn.style.display = 'none';
-        }
+        initializeMediaPlayer(url);
 
     } catch (error) {
         console.error('Error loading media:', error);
