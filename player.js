@@ -445,6 +445,9 @@ function loadComments(filePath) {
     currentFilePath = filePath;
     const fileId = getFileId(filePath);
 
+    console.log('Loading comments for file:', filePath);
+    console.log('File ID:', fileId);
+
     // Unsubscribe from previous listener if exists
     if (unsubscribeComments) {
         unsubscribeComments();
@@ -454,7 +457,10 @@ function loadComments(filePath) {
     // Simple query without orderBy to avoid composite index requirement
     const q = query(commentsRef, where('fileId', '==', fileId));
 
+    console.log('Starting onSnapshot listener...');
+
     unsubscribeComments = onSnapshot(q, (snapshot) => {
+        console.log('Snapshot received, size:', snapshot.size);
         commentsLoading.style.display = 'none';
         commentsCount.textContent = `(${snapshot.size})`;
 
@@ -467,6 +473,7 @@ function loadComments(filePath) {
         if (noCommentsEl) noCommentsEl.remove();
 
         if (snapshot.empty) {
+            console.log('No comments found');
             const noComments = document.createElement('div');
             noComments.className = 'no-comments';
             noComments.textContent = 'No comments yet. Be the first to comment!';
@@ -477,7 +484,9 @@ function loadComments(filePath) {
         // Sort comments by createdAt client-side (newest first)
         const comments = [];
         snapshot.forEach((docSnap) => {
-            comments.push({ id: docSnap.id, ...docSnap.data() });
+            const data = docSnap.data();
+            console.log('Comment data:', data);
+            comments.push({ id: docSnap.id, ...data });
         });
 
         comments.sort((a, b) => {
@@ -490,17 +499,29 @@ function loadComments(filePath) {
             const commentEl = createCommentElement(comment.id, comment);
             commentsList.appendChild(commentEl);
         });
+        console.log('Comments rendered successfully');
     }, (error) => {
         console.error('Error loading comments:', error);
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
         commentsLoading.style.display = 'none';
 
         // Check if it's a permission error
         if (error.code === 'permission-denied') {
-            commentsLoading.textContent = 'Unable to load comments. Please sign in.';
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'no-comments';
+            errorDiv.textContent = 'Permission denied. Please check Firestore rules.';
+            commentsList.appendChild(errorDiv);
+        } else if (error.code === 'failed-precondition') {
+            // This usually means an index is required
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'no-comments';
+            errorDiv.textContent = 'Database index required. Check console for details.';
+            commentsList.appendChild(errorDiv);
         } else {
             const errorDiv = document.createElement('div');
             errorDiv.className = 'no-comments';
-            errorDiv.textContent = 'Unable to load comments. Please try again.';
+            errorDiv.textContent = 'Unable to load comments: ' + error.message;
             commentsList.appendChild(errorDiv);
         }
     });
