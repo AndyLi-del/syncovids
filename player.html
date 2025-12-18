@@ -15,10 +15,20 @@
         </div>
 
         <div class="video-player-wrapper" id="video-wrapper">
-            <video id="video-player" playsinline>
+            <!-- Video element -->
+            <video id="video-player" playsinline style="display: none;">
                 <source id="video-source" src="" type="video/mp4">
                 Your browser does not support video playback.
             </video>
+
+            <!-- Audio element -->
+            <audio id="audio-player" style="display: none;">
+                <source id="audio-source" src="" type="audio/mp3">
+                Your browser does not support audio playback.
+            </audio>
+
+            <!-- Image element -->
+            <img id="image-viewer" style="display: none;" alt="Image">
 
             <div class="player-controls" id="player-controls">
                 <div class="progress-container" id="progress-container">

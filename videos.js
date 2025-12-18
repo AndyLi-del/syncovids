@@ -14,12 +14,21 @@ const noVideos = document.getElementById('no-videos');
 
 let currentUser = null;
 
-// Video file extensions
+// Media file extensions
 const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.m4v'];
+const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+const audioExtensions = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac', '.wma'];
 
-function isVideoFile(filename) {
+function getMediaType(filename) {
     const lower = filename.toLowerCase();
-    return videoExtensions.some(ext => lower.endsWith(ext));
+    if (videoExtensions.some(ext => lower.endsWith(ext))) return 'video';
+    if (imageExtensions.some(ext => lower.endsWith(ext))) return 'image';
+    if (audioExtensions.some(ext => lower.endsWith(ext))) return 'audio';
+    return null;
+}
+
+function isMediaFile(filename) {
+    return getMediaType(filename) !== null;
 }
 
 // Sync signed-in user to Firestore
@@ -77,47 +86,49 @@ async function loadVideos(uid) {
         const userFilesRef = ref(storage, `users/${uid}/files`);
         const result = await listAll(userFilesRef);
 
-        // Filter for video files only
-        const videoItems = [];
+        // Filter for all media files (videos, images, audio)
+        const mediaItems = [];
 
         for (const item of result.items) {
-            if (isVideoFile(item.name)) {
+            const mediaType = getMediaType(item.name);
+            if (mediaType) {
                 try {
                     const url = await getDownloadURL(item);
                     const metadata = await getMetadata(item);
-                    videoItems.push({
+                    mediaItems.push({
                         name: item.name,
                         fullPath: item.fullPath,
                         url: url,
-                        metadata: metadata
+                        metadata: metadata,
+                        type: mediaType
                     });
                 } catch (error) {
-                    console.error('Error getting video:', error);
+                    console.error('Error getting media:', error);
                 }
             }
         }
 
         loading.style.display = 'none';
 
-        if (videoItems.length === 0) {
+        if (mediaItems.length === 0) {
             noVideos.style.display = 'block';
             return;
         }
 
         // Sort by upload time (newest first)
-        videoItems.sort((a, b) => {
+        mediaItems.sort((a, b) => {
             const timeA = new Date(a.metadata.timeCreated).getTime();
             const timeB = new Date(b.metadata.timeCreated).getTime();
             return timeB - timeA;
         });
 
-        // Render videos
-        renderVideos(videoItems);
+        // Render media
+        renderVideos(mediaItems);
     } catch (error) {
-        console.error('Error loading videos:', error);
-        loading.textContent = 'Error loading videos';
+        console.error('Error loading media:', error);
+        loading.textContent = 'Error loading media';
 
-        // If folder doesn't exist yet, show no videos message
+        // If folder doesn't exist yet, show no media message
         if (error.code === 'storage/object-not-found') {
             loading.style.display = 'none';
             noVideos.style.display = 'block';
@@ -125,26 +136,44 @@ async function loadVideos(uid) {
     }
 }
 
-function renderVideos(videos) {
+function renderVideos(mediaFiles) {
     videosGrid.innerHTML = '';
 
-    videos.forEach(video => {
-        const videoCard = document.createElement('div');
-        videoCard.className = 'video-card';
+    mediaFiles.forEach(media => {
+        const mediaCard = document.createElement('div');
+        mediaCard.className = 'video-card';
 
         // Extract display name (remove timestamp prefix)
-        const displayName = video.name.replace(/^\d+_/, '');
-        const uploadDate = new Date(video.metadata.timeCreated).toLocaleDateString();
-        const fileSize = formatFileSize(video.metadata.size);
+        const displayName = media.name.replace(/^\d+_/, '');
+        const uploadDate = new Date(media.metadata.timeCreated).toLocaleDateString();
+        const fileSize = formatFileSize(media.metadata.size);
 
-        const playerUrl = `player.html?path=${encodeURIComponent(video.fullPath)}`;
+        const playerUrl = `player.html?path=${encodeURIComponent(media.fullPath)}`;
 
-        videoCard.innerHTML = `
+        let previewHTML = '';
+        let iconHTML = '';
+        let mediaTypeLabel = '';
+
+        if (media.type === 'video') {
+            previewHTML = `<video src="${media.url}" preload="metadata"></video>`;
+            iconHTML = '▶';
+            mediaTypeLabel = 'Video';
+        } else if (media.type === 'image') {
+            previewHTML = `<img src="${media.url}" alt="${displayName}">`;
+            iconHTML = '🖼';
+            mediaTypeLabel = 'Image';
+        } else if (media.type === 'audio') {
+            previewHTML = `<div class="audio-preview">🎵</div>`;
+            iconHTML = '▶';
+            mediaTypeLabel = 'Audio';
+        }
+
+        mediaCard.innerHTML = `
             <a href="${playerUrl}" class="video-link">
                 <div class="video-wrapper">
-                    <video src="${video.url}" preload="metadata"></video>
+                    ${previewHTML}
                     <div class="video-overlay">
-                        <button class="play-btn">▶</button>
+                        <button class="play-btn">${iconHTML}</button>
                     </div>
                 </div>
                 <div class="video-info">
@@ -153,20 +182,20 @@ function renderVideos(videos) {
                 </div>
             </a>
             <div class="video-actions">
-                <a href="${video.url}" target="_blank" class="btn-action btn-download" download="${displayName}">Download</a>
-                <button class="btn-action btn-delete" data-path="${video.fullPath}">Delete</button>
+                <a href="${media.url}" target="_blank" class="btn-action btn-download" download="${displayName}">Download</a>
+                <button class="btn-action btn-delete" data-path="${media.fullPath}">Delete</button>
             </div>
         `;
 
         // Delete handler
-        const deleteBtn = videoCard.querySelector('.btn-delete');
+        const deleteBtn = mediaCard.querySelector('.btn-delete');
         deleteBtn.addEventListener('click', async () => {
-            if (confirm('Are you sure you want to delete this video?')) {
-                await deleteVideo(video.fullPath, videoCard);
+            if (confirm(`Are you sure you want to delete this ${mediaTypeLabel.toLowerCase()}?`)) {
+                await deleteVideo(media.fullPath, mediaCard);
             }
         });
 
-        videosGrid.appendChild(videoCard);
+        videosGrid.appendChild(mediaCard);
     });
 }
 

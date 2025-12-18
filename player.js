@@ -7,8 +7,15 @@ const playerContainer = document.getElementById('player-container');
 const videoWrapper = document.getElementById('video-wrapper');
 const video = document.getElementById('video-player');
 const videoSource = document.getElementById('video-source');
+const audio = document.getElementById('audio-player');
+const audioSource = document.getElementById('audio-source');
+const image = document.getElementById('image-viewer');
 const videoTitle = document.getElementById('video-title');
 const videoMeta = document.getElementById('video-meta');
+
+// Media type tracking
+let currentMediaType = null;
+let mediaPlayer = null; // Will be video or audio element
 
 // Controls
 const playPauseBtn = document.getElementById('play-pause-btn');
@@ -32,6 +39,19 @@ const playerControls = document.getElementById('player-controls');
 let controlsTimeout;
 let isTheaterMode = false;
 
+// Media file extensions
+const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.m4v'];
+const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+const audioExtensions = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac', '.wma'];
+
+function getMediaType(filename) {
+    const lower = filename.toLowerCase();
+    if (videoExtensions.some(ext => lower.endsWith(ext))) return 'video';
+    if (imageExtensions.some(ext => lower.endsWith(ext))) return 'image';
+    if (audioExtensions.some(ext => lower.endsWith(ext))) return 'audio';
+    return null;
+}
+
 // Auth check
 onAuthStateChanged(auth, async (user) => {
     if (user) {
@@ -44,134 +64,184 @@ onAuthStateChanged(auth, async (user) => {
 // Load video from URL params
 async function loadVideo() {
     const params = new URLSearchParams(window.location.search);
-    const videoPath = params.get('path');
+    const mediaPath = params.get('path');
 
-    if (!videoPath) {
-        videoTitle.textContent = 'No video specified';
+    if (!mediaPath) {
+        videoTitle.textContent = 'No media specified';
         return;
     }
 
     try {
-        const videoRef = ref(storage, videoPath);
-        const url = await getDownloadURL(videoRef);
-        const metadata = await getMetadata(videoRef);
+        const mediaRef = ref(storage, mediaPath);
+        const url = await getDownloadURL(mediaRef);
+        const metadata = await getMetadata(mediaRef);
 
         // Extract display name
-        const fileName = videoPath.split('/').pop();
+        const fileName = mediaPath.split('/').pop();
         const displayName = fileName.replace(/^\d+_/, '');
 
         videoTitle.textContent = displayName;
         document.title = `${displayName} - Syncovids`;
 
-        // Set video source
-        videoSource.src = url;
-        video.load();
+        // Determine media type
+        currentMediaType = getMediaType(fileName);
 
         // Display meta info
         const uploadDate = new Date(metadata.timeCreated).toLocaleDateString();
         const fileSize = formatFileSize(metadata.size);
         videoMeta.textContent = `Uploaded: ${uploadDate} • Size: ${fileSize}`;
 
+        // Show appropriate player based on media type
+        if (currentMediaType === 'video') {
+            video.style.display = 'block';
+            audio.style.display = 'none';
+            image.style.display = 'none';
+            videoSource.src = url;
+            video.load();
+            mediaPlayer = video;
+            playerControls.style.display = 'block';
+            setupMediaEventListeners();
+        } else if (currentMediaType === 'audio') {
+            video.style.display = 'none';
+            audio.style.display = 'block';
+            image.style.display = 'none';
+            audioSource.src = url;
+            audio.load();
+            mediaPlayer = audio;
+            playerControls.style.display = 'block';
+            setupMediaEventListeners();
+            // Show audio visualization
+            videoWrapper.style.backgroundColor = '#1a1a1a';
+        } else if (currentMediaType === 'image') {
+            video.style.display = 'none';
+            audio.style.display = 'none';
+            image.style.display = 'block';
+            image.src = url;
+            mediaPlayer = null;
+            // Hide playback controls for images
+            playerControls.style.display = 'none';
+            bigPlayBtn.style.display = 'none';
+        }
+
     } catch (error) {
-        console.error('Error loading video:', error);
-        videoTitle.textContent = 'Error loading video';
+        console.error('Error loading media:', error);
+        videoTitle.textContent = 'Error loading media';
     }
+}
+
+// Setup event listeners for media player (video or audio)
+function setupMediaEventListeners() {
+    if (!mediaPlayer) return;
+
+    mediaPlayer.addEventListener('play', () => {
+        playPauseBtn.textContent = '⏸';
+        bigPlayBtn.style.display = 'none';
+    });
+
+    mediaPlayer.addEventListener('pause', () => {
+        playPauseBtn.textContent = '▶';
+        bigPlayBtn.style.display = 'flex';
+    });
+
+    mediaPlayer.addEventListener('ended', () => {
+        playPauseBtn.textContent = '▶';
+        bigPlayBtn.style.display = 'flex';
+    });
+
+    mediaPlayer.addEventListener('loadedmetadata', () => {
+        durationEl.textContent = formatTime(mediaPlayer.duration);
+    });
+
+    mediaPlayer.addEventListener('timeupdate', () => {
+        currentTimeEl.textContent = formatTime(mediaPlayer.currentTime);
+        const percent = (mediaPlayer.currentTime / mediaPlayer.duration) * 100;
+        progressPlayed.style.width = `${percent}%`;
+    });
+
+    mediaPlayer.addEventListener('progress', () => {
+        if (mediaPlayer.buffered.length > 0) {
+            const buffered = mediaPlayer.buffered.end(mediaPlayer.buffered.length - 1);
+            const percent = (buffered / mediaPlayer.duration) * 100;
+            progressBuffered.style.width = `${percent}%`;
+        }
+    });
 }
 
 // Play/Pause
 function togglePlay() {
-    if (video.paused) {
-        video.play();
+    if (!mediaPlayer) return;
+    if (mediaPlayer.paused) {
+        mediaPlayer.play();
     } else {
-        video.pause();
+        mediaPlayer.pause();
     }
 }
 
 playPauseBtn.addEventListener('click', togglePlay);
 bigPlayBtn.addEventListener('click', togglePlay);
 video.addEventListener('click', togglePlay);
-
-video.addEventListener('play', () => {
-    playPauseBtn.textContent = '⏸';
-    bigPlayBtn.style.display = 'none';
-});
-
-video.addEventListener('pause', () => {
-    playPauseBtn.textContent = '▶';
-    bigPlayBtn.style.display = 'flex';
-});
-
-video.addEventListener('ended', () => {
-    playPauseBtn.textContent = '▶';
-    bigPlayBtn.style.display = 'flex';
-});
+audio.addEventListener('click', togglePlay);
 
 // Rewind/Forward (10 seconds)
 rewindBtn.addEventListener('click', () => {
-    video.currentTime = Math.max(0, video.currentTime - 10);
+    if (mediaPlayer) {
+        mediaPlayer.currentTime = Math.max(0, mediaPlayer.currentTime - 10);
+    }
 });
 
 forwardBtn.addEventListener('click', () => {
-    video.currentTime = Math.min(video.duration, video.currentTime + 10);
+    if (mediaPlayer) {
+        mediaPlayer.currentTime = Math.min(mediaPlayer.duration, mediaPlayer.currentTime + 10);
+    }
 });
 
 // Volume
 muteBtn.addEventListener('click', () => {
-    video.muted = !video.muted;
-    updateVolumeIcon();
+    if (mediaPlayer) {
+        mediaPlayer.muted = !mediaPlayer.muted;
+        updateVolumeIcon();
+    }
 });
 
 volumeSlider.addEventListener('input', (e) => {
-    video.volume = e.target.value;
-    video.muted = false;
-    updateVolumeIcon();
+    if (mediaPlayer) {
+        mediaPlayer.volume = e.target.value;
+        mediaPlayer.muted = false;
+        updateVolumeIcon();
+    }
 });
 
 function updateVolumeIcon() {
-    if (video.muted || video.volume === 0) {
+    if (!mediaPlayer) return;
+    if (mediaPlayer.muted || mediaPlayer.volume === 0) {
         muteBtn.textContent = '🔇';
-    } else if (video.volume < 0.5) {
+    } else if (mediaPlayer.volume < 0.5) {
         muteBtn.textContent = '🔉';
     } else {
         muteBtn.textContent = '🔊';
     }
-    volumeSlider.value = video.muted ? 0 : video.volume;
+    volumeSlider.value = mediaPlayer.muted ? 0 : mediaPlayer.volume;
 }
-
-// Time display
-video.addEventListener('loadedmetadata', () => {
-    durationEl.textContent = formatTime(video.duration);
-});
-
-video.addEventListener('timeupdate', () => {
-    currentTimeEl.textContent = formatTime(video.currentTime);
-    const percent = (video.currentTime / video.duration) * 100;
-    progressPlayed.style.width = `${percent}%`;
-});
-
-// Buffered progress
-video.addEventListener('progress', () => {
-    if (video.buffered.length > 0) {
-        const buffered = video.buffered.end(video.buffered.length - 1);
-        const percent = (buffered / video.duration) * 100;
-        progressBuffered.style.width = `${percent}%`;
-    }
-});
 
 // Progress bar click
 progressContainer.addEventListener('click', (e) => {
-    const rect = progressContainer.getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
-    video.currentTime = percent * video.duration;
+    if (mediaPlayer) {
+        const rect = progressContainer.getBoundingClientRect();
+        const percent = (e.clientX - rect.left) / rect.width;
+        mediaPlayer.currentTime = percent * mediaPlayer.duration;
+    }
 });
 
 // Playback speed
 speedSelect.addEventListener('change', (e) => {
-    video.playbackRate = parseFloat(e.target.value);
+    if (mediaPlayer) {
+        mediaPlayer.playbackRate = parseFloat(e.target.value);
+    }
 });
 
-// Picture in Picture
+// Picture in Picture (only for video)
 pipBtn.addEventListener('click', async () => {
+    if (currentMediaType !== 'video') return;
     try {
         if (document.pictureInPictureElement) {
             await document.exitPictureInPicture();
@@ -217,14 +287,16 @@ videoWrapper.addEventListener('mousemove', showControls);
 videoWrapper.addEventListener('mouseleave', hideControlsDelayed);
 
 function showControls() {
-    playerControls.classList.add('visible');
-    videoWrapper.style.cursor = 'default';
-    clearTimeout(controlsTimeout);
-    controlsTimeout = setTimeout(hideControls, 3000);
+    if (currentMediaType !== 'image') {
+        playerControls.classList.add('visible');
+        videoWrapper.style.cursor = 'default';
+        clearTimeout(controlsTimeout);
+        controlsTimeout = setTimeout(hideControls, 3000);
+    }
 }
 
 function hideControls() {
-    if (!video.paused) {
+    if (mediaPlayer && !mediaPlayer.paused && currentMediaType !== 'image') {
         playerControls.classList.remove('visible');
         videoWrapper.style.cursor = 'none';
     }
@@ -238,6 +310,7 @@ function hideControlsDelayed() {
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (currentMediaType === 'image') return; // No keyboard shortcuts for images
 
     switch (e.key.toLowerCase()) {
         case ' ':
@@ -251,34 +324,40 @@ document.addEventListener('keydown', (e) => {
             break;
         case 'm':
             e.preventDefault();
-            video.muted = !video.muted;
-            updateVolumeIcon();
+            if (mediaPlayer) {
+                mediaPlayer.muted = !mediaPlayer.muted;
+                updateVolumeIcon();
+            }
             break;
         case 'arrowleft':
             e.preventDefault();
-            video.currentTime -= 5;
+            if (mediaPlayer) mediaPlayer.currentTime -= 5;
             break;
         case 'arrowright':
             e.preventDefault();
-            video.currentTime += 5;
+            if (mediaPlayer) mediaPlayer.currentTime += 5;
             break;
         case 'arrowup':
             e.preventDefault();
-            video.volume = Math.min(1, video.volume + 0.1);
-            updateVolumeIcon();
+            if (mediaPlayer) {
+                mediaPlayer.volume = Math.min(1, mediaPlayer.volume + 0.1);
+                updateVolumeIcon();
+            }
             break;
         case 'arrowdown':
             e.preventDefault();
-            video.volume = Math.max(0, video.volume - 0.1);
-            updateVolumeIcon();
+            if (mediaPlayer) {
+                mediaPlayer.volume = Math.max(0, mediaPlayer.volume - 0.1);
+                updateVolumeIcon();
+            }
             break;
         case 'j':
             e.preventDefault();
-            video.currentTime -= 10;
+            if (mediaPlayer) mediaPlayer.currentTime -= 10;
             break;
         case 'l':
             e.preventDefault();
-            video.currentTime += 10;
+            if (mediaPlayer) mediaPlayer.currentTime += 10;
             break;
         case '0':
         case '1':
@@ -291,7 +370,7 @@ document.addEventListener('keydown', (e) => {
         case '8':
         case '9':
             e.preventDefault();
-            video.currentTime = (parseInt(e.key) / 10) * video.duration;
+            if (mediaPlayer) mediaPlayer.currentTime = (parseInt(e.key) / 10) * mediaPlayer.duration;
             break;
     }
     showControls();

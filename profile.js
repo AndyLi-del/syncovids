@@ -22,12 +22,21 @@ let profileUserId = null;
 // Default profile picture
 const defaultProfilePic = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiMzMzMiLz48Y2lyY2xlIGN4PSI1MCIgY3k9IjM1IiByPSIyMCIgZmlsbD0iIzY2NiIvPjxlbGxpcHNlIGN4PSI1MCIgY3k9Ijk1IiByeD0iMzUiIHJ5PSIzMCIgZmlsbD0iIzY2NiIvPjwvc3ZnPg==';
 
-// Video file extensions
+// Media file extensions
 const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.m4v'];
+const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+const audioExtensions = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac', '.wma'];
 
-function isVideoFile(filename) {
+function getMediaType(filename) {
     const lower = filename.toLowerCase();
-    return videoExtensions.some(ext => lower.endsWith(ext));
+    if (videoExtensions.some(ext => lower.endsWith(ext))) return 'video';
+    if (imageExtensions.some(ext => lower.endsWith(ext))) return 'image';
+    if (audioExtensions.some(ext => lower.endsWith(ext))) return 'audio';
+    return null;
+}
+
+function isMediaFile(filename) {
+    return getMediaType(filename) !== null;
 }
 
 // Get profile user ID from URL
@@ -123,72 +132,88 @@ async function loadUserVideos() {
         const userFilesRef = ref(storage, `users/${profileUserId}/files`);
         const result = await listAll(userFilesRef);
 
-        // Filter for video files only
-        const videoItems = [];
+        // Filter for all media files (videos, images, audio)
+        const mediaItems = [];
 
         for (const item of result.items) {
-            if (isVideoFile(item.name)) {
+            const mediaType = getMediaType(item.name);
+            if (mediaType) {
                 try {
                     const url = await getDownloadURL(item);
                     const metadata = await getMetadata(item);
-                    videoItems.push({
+                    mediaItems.push({
                         name: item.name,
                         fullPath: item.fullPath,
                         url: url,
-                        metadata: metadata
+                        metadata: metadata,
+                        type: mediaType
                     });
                 } catch (error) {
-                    console.error('Error getting video:', error);
+                    console.error('Error getting media:', error);
                 }
             }
         }
 
         loading.style.display = 'none';
 
-        videoCount.textContent = `${videoItems.length} video${videoItems.length !== 1 ? 's' : ''}`;
+        videoCount.textContent = `${mediaItems.length} file${mediaItems.length !== 1 ? 's' : ''}`;
 
-        if (videoItems.length === 0) {
+        if (mediaItems.length === 0) {
             noVideos.style.display = 'block';
             return;
         }
 
         // Sort by upload time (newest first)
-        videoItems.sort((a, b) => {
+        mediaItems.sort((a, b) => {
             const timeA = new Date(a.metadata.timeCreated).getTime();
             const timeB = new Date(b.metadata.timeCreated).getTime();
             return timeB - timeA;
         });
 
-        renderVideos(videoItems);
+        renderVideos(mediaItems);
     } catch (error) {
-        console.error('Error loading videos:', error);
+        console.error('Error loading media:', error);
         loading.style.display = 'none';
 
         if (error.code === 'storage/object-not-found') {
             noVideos.style.display = 'block';
-            videoCount.textContent = '0 videos';
+            videoCount.textContent = '0 files';
         }
     }
 }
 
-function renderVideos(videos) {
+function renderVideos(mediaFiles) {
     videosGrid.innerHTML = '';
 
-    videos.forEach(video => {
-        const videoCard = document.createElement('div');
-        videoCard.className = 'video-card';
+    mediaFiles.forEach(media => {
+        const mediaCard = document.createElement('div');
+        mediaCard.className = 'video-card';
 
-        const displayName = video.name.replace(/^\d+_/, '');
-        const uploadDate = new Date(video.metadata.timeCreated).toLocaleDateString();
-        const fileSize = formatFileSize(video.metadata.size);
-        const playerUrl = `player.html?path=${encodeURIComponent(video.fullPath)}`;
+        const displayName = media.name.replace(/^\d+_/, '');
+        const uploadDate = new Date(media.metadata.timeCreated).toLocaleDateString();
+        const fileSize = formatFileSize(media.metadata.size);
+        const playerUrl = `player.html?path=${encodeURIComponent(media.fullPath)}`;
 
-        videoCard.innerHTML = `
+        let previewHTML = '';
+        let iconHTML = '';
+
+        if (media.type === 'video') {
+            previewHTML = `<video src="${media.url}" preload="metadata"></video>`;
+            iconHTML = '▶';
+        } else if (media.type === 'image') {
+            previewHTML = `<img src="${media.url}" alt="${displayName}">`;
+            iconHTML = '🖼';
+        } else if (media.type === 'audio') {
+            previewHTML = `<div class="audio-preview">🎵</div>`;
+            iconHTML = '▶';
+        }
+
+        mediaCard.innerHTML = `
             <a href="${playerUrl}" class="video-link">
                 <div class="video-wrapper">
-                    <video src="${video.url}" preload="metadata"></video>
+                    ${previewHTML}
                     <div class="video-overlay">
-                        <button class="play-btn">▶</button>
+                        <button class="play-btn">${iconHTML}</button>
                     </div>
                 </div>
                 <div class="video-info">
@@ -198,7 +223,7 @@ function renderVideos(videos) {
             </a>
         `;
 
-        videosGrid.appendChild(videoCard);
+        videosGrid.appendChild(mediaCard);
     });
 }
 
