@@ -1,7 +1,7 @@
 import { auth, storage, db } from "./firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { ref, getDownloadURL, getMetadata } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
-import { collection, addDoc, query, where, orderBy, onSnapshot, deleteDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, addDoc, query, where, orderBy, onSnapshot, deleteDoc, doc, getDoc, serverTimestamp, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // Elements
 const playerContainer = document.getElementById('player-container');
@@ -451,11 +451,8 @@ function loadComments(filePath) {
     }
 
     const commentsRef = collection(db, 'comments');
-    const q = query(
-        commentsRef,
-        where('fileId', '==', fileId),
-        orderBy('createdAt', 'desc')
-    );
+    // Simple query without orderBy to avoid composite index requirement
+    const q = query(commentsRef, where('fileId', '==', fileId));
 
     unsubscribeComments = onSnapshot(q, (snapshot) => {
         commentsLoading.style.display = 'none';
@@ -465,6 +462,10 @@ function loadComments(filePath) {
         const existingComments = commentsList.querySelectorAll('.comment-item');
         existingComments.forEach(c => c.remove());
 
+        // Remove "no comments" message if exists
+        const noCommentsEl = commentsList.querySelector('.no-comments');
+        if (noCommentsEl) noCommentsEl.remove();
+
         if (snapshot.empty) {
             const noComments = document.createElement('div');
             noComments.className = 'no-comments';
@@ -473,18 +474,35 @@ function loadComments(filePath) {
             return;
         }
 
-        // Remove "no comments" message if exists
-        const noCommentsEl = commentsList.querySelector('.no-comments');
-        if (noCommentsEl) noCommentsEl.remove();
-
+        // Sort comments by createdAt client-side (newest first)
+        const comments = [];
         snapshot.forEach((docSnap) => {
-            const comment = docSnap.data();
-            const commentEl = createCommentElement(docSnap.id, comment);
+            comments.push({ id: docSnap.id, ...docSnap.data() });
+        });
+
+        comments.sort((a, b) => {
+            const timeA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+            const timeB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+            return timeB - timeA; // Newest first
+        });
+
+        comments.forEach((comment) => {
+            const commentEl = createCommentElement(comment.id, comment);
             commentsList.appendChild(commentEl);
         });
     }, (error) => {
         console.error('Error loading comments:', error);
-        commentsLoading.textContent = 'Error loading comments';
+        commentsLoading.style.display = 'none';
+
+        // Check if it's a permission error
+        if (error.code === 'permission-denied') {
+            commentsLoading.textContent = 'Unable to load comments. Please sign in.';
+        } else {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'no-comments';
+            errorDiv.textContent = 'Unable to load comments. Please try again.';
+            commentsList.appendChild(errorDiv);
+        }
     });
 }
 
@@ -524,22 +542,29 @@ function createCommentElement(commentId, comment) {
 // Submit a new comment
 async function submitComment() {
     const text = commentInput.value.trim();
-    if (!text || !currentUser || !currentFilePath) return;
+    if (!text || !currentUser || !currentFilePath) {
+        console.log('Submit blocked:', { text: !!text, currentUser: !!currentUser, currentFilePath: !!currentFilePath });
+        return;
+    }
 
     btnSubmitComment.disabled = true;
     btnSubmitComment.textContent = 'Posting...';
 
     try {
         const fileId = getFileId(currentFilePath);
-        await addDoc(collection(db, 'comments'), {
+        const commentData = {
             fileId: fileId,
             filePath: currentFilePath,
             userId: currentUser.uid,
             username: currentUserData?.username || currentUser.displayName || 'Anonymous',
             userProfilePicture: currentUserData?.profilePicture || null,
             text: text,
-            createdAt: new Date()
-        });
+            createdAt: serverTimestamp()
+        };
+
+        console.log('Submitting comment:', commentData);
+        await addDoc(collection(db, 'comments'), commentData);
+        console.log('Comment submitted successfully');
 
         commentInput.value = '';
         commentInput.style.height = 'auto';
@@ -547,7 +572,14 @@ async function submitComment() {
         btnCancelComment.click(); // Reset form state
     } catch (error) {
         console.error('Error posting comment:', error);
-        alert('Failed to post comment. Please try again.');
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+
+        if (error.code === 'permission-denied') {
+            alert('Permission denied. Please make sure you are signed in.');
+        } else {
+            alert('Failed to post comment: ' + error.message);
+        }
         btnSubmitComment.disabled = false;
         btnSubmitComment.textContent = 'Comment';
     }
@@ -567,9 +599,12 @@ async function deleteComment(commentId) {
 
 // Format time ago
 function formatTimeAgo(date) {
+    if (!date) return 'Just now';
+
     const now = new Date();
     const seconds = Math.floor((now - date) / 1000);
 
+    if (seconds < 0 || isNaN(seconds)) return 'Just now';
     if (seconds < 60) return 'Just now';
     if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
     if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
