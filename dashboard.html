@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Syncovids</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="logo">syncovids</a>
+            <div class="nav-right">
+                <a href="signin.html" class="btn-signin" id="signin-btn">Sign In</a>
+                <a href="explore.html" class="nav-link" id="explore-btn" style="display: none;">Explore</a>
+                <a href="videos.html" class="nav-link" id="videos-btn" style="display: none;">Videos</a>
+                <a href="dashboard.html" class="btn-dashboard" id="dashboard-btn" style="display: none;">Dashboard</a>
+                <button class="btn-logout" id="logout-btn" style="display: none;">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="dashboard-container">
+        <div class="dashboard-card">
+            <h2>Dashboard</h2>
+
+            <div class="profile-section">
+                <div class="profile-picture-container">
+                    <img src="" alt="Profile" class="profile-picture" id="profile-picture">
+                    <div class="profile-picture-overlay" id="profile-picture-overlay">
+                        <span>Change</span>
+                    </div>
+                    <input type="file" id="profile-input" accept="image/*" hidden>
+                </div>
+                <p class="profile-upload-hint">Click to upload profile picture</p>
+            </div>
+
+            <div class="user-info">
+                <div class="info-row">
+                    <span class="info-label">Username</span>
+                    <span class="info-value" id="user-username">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Email</span>
+                    <span class="info-value" id="user-email">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">User ID</span>
+                    <span class="info-value info-uid" id="user-uid">Loading...</span>
+                </div>
+            </div>
+
+            <div class="upload-section">
+                <h3>Upload Files</h3>
+                <div class="upload-area" id="upload-area">
+                    <input type="file" id="file-input" hidden>
+                    <div class="upload-icon">+</div>
+                    <p>Click to select a file</p>
+                    <span class="file-name" id="file-name"></span>
+                </div>
+                <button class="btn-upload" id="upload-btn" disabled>Upload</button>
+                <div class="upload-progress" id="upload-progress">
+                    <div class="progress-bar" id="progress-bar"></div>
+                </div>
+                <p class="upload-message" id="upload-message"></p>
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="dashboard.js"></script>
+</body>
+</html>

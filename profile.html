@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile - Syncovids</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="logo">syncovids</a>
+            <div class="nav-right">
+                <a href="signin.html" class="btn-signin" id="signin-btn">Sign In</a>
+                <a href="explore.html" class="nav-link" id="explore-btn" style="display: none;">Explore</a>
+                <a href="videos.html" class="nav-link" id="videos-btn" style="display: none;">Videos</a>
+                <a href="dashboard.html" class="btn-dashboard" id="dashboard-btn" style="display: none;">Dashboard</a>
+                <button class="btn-logout" id="logout-btn" style="display: none;">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="profile-container">
+        <div class="profile-header-section">
+            <a href="explore.html" class="back-link">← Back to Explore</a>
+            <div class="profile-info">
+                <div class="profile-avatar">
+                    <img src="" alt="Profile" id="profile-avatar">
+                </div>
+                <div class="profile-details">
+                    <h1 id="profile-username">Loading...</h1>
+                    <p class="profile-joined" id="profile-joined"></p>
+                    <p class="profile-video-count" id="video-count"></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="profile-videos-section">
+            <h2>Videos</h2>
+            <div class="videos-grid" id="videos-grid">
+                <div class="loading" id="loading">Loading videos...</div>
+            </div>
+            <p class="no-videos" id="no-videos" style="display: none;">This user hasn't uploaded any videos yet.</p>
+        </div>
+    </main>
+
+    <script type="module" src="profile.js"></script>
+</body>
+</html>

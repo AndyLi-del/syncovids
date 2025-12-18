@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Explore - Syncovids</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="logo">syncovids</a>
+            <div class="nav-right">
+                <a href="signin.html" class="btn-signin" id="signin-btn">Sign In</a>
+                <a href="explore.html" class="nav-link active" id="explore-btn" style="display: none;">Explore</a>
+                <a href="videos.html" class="nav-link" id="videos-btn" style="display: none;">Videos</a>
+                <a href="dashboard.html" class="btn-dashboard" id="dashboard-btn" style="display: none;">Dashboard</a>
+                <button class="btn-logout" id="logout-btn" style="display: none;">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="explore-container">
+        <div class="explore-header">
+            <h1>Explore Users</h1>
+            <p>Discover videos from other creators</p>
+        </div>
+
+        <div class="users-grid" id="users-grid">
+            <div class="loading" id="loading">Loading users...</div>
+        </div>
+
+        <p class="no-users" id="no-users" style="display: none;">No users found.</p>
+    </main>
+
+    <script type="module" src="explore.js"></script>
+</body>
+</html>

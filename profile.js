@@ -1,0 +1,188 @@
+import { db, auth, storage } from "./firebase-config.js";
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { ref, listAll, getDownloadURL, getMetadata } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+
+const signinBtn = document.getElementById('signin-btn');
+const exploreBtn = document.getElementById('explore-btn');
+const videosBtn = document.getElementById('videos-btn');
+const dashboardBtn = document.getElementById('dashboard-btn');
+const logoutBtn = document.getElementById('logout-btn');
+const profileAvatar = document.getElementById('profile-avatar');
+const profileUsername = document.getElementById('profile-username');
+const profileJoined = document.getElementById('profile-joined');
+const videoCount = document.getElementById('video-count');
+const videosGrid = document.getElementById('videos-grid');
+const loading = document.getElementById('loading');
+const noVideos = document.getElementById('no-videos');
+
+let currentUser = null;
+let profileUserId = null;
+
+// Default profile picture
+const defaultProfilePic = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiMzMzMiLz48Y2lyY2xlIGN4PSI1MCIgY3k9IjM1IiByPSIyMCIgZmlsbD0iIzY2NiIvPjxlbGxpcHNlIGN4PSI1MCIgY3k9Ijk1IiByeD0iMzUiIHJ5PSIzMCIgZmlsbD0iIzY2NiIvPjwvc3ZnPg==';
+
+// Video file extensions
+const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.m4v'];
+
+function isVideoFile(filename) {
+    const lower = filename.toLowerCase();
+    return videoExtensions.some(ext => lower.endsWith(ext));
+}
+
+// Get profile user ID from URL
+const params = new URLSearchParams(window.location.search);
+profileUserId = params.get('uid');
+
+if (!profileUserId) {
+    window.location.href = 'explore.html';
+}
+
+// Listen for auth state changes
+onAuthStateChanged(auth, async (user) => {
+    if (user) {
+        currentUser = user;
+        signinBtn.style.display = 'none';
+        exploreBtn.style.display = 'inline-block';
+        videosBtn.style.display = 'inline-block';
+        dashboardBtn.style.display = 'inline-block';
+        logoutBtn.style.display = 'inline-block';
+
+        // Load profile user data
+        await loadProfile();
+        await loadUserVideos();
+    } else {
+        window.location.href = 'signin.html';
+    }
+});
+
+// Logout handler
+logoutBtn.addEventListener('click', async () => {
+    try {
+        await signOut(auth);
+        window.location.href = 'index.html';
+    } catch (error) {
+        console.error('Error signing out:', error);
+    }
+});
+
+async function loadProfile() {
+    try {
+        const userDoc = await getDoc(doc(db, "users", profileUserId));
+
+        if (userDoc.exists()) {
+            const userData = userDoc.data();
+            profileUsername.textContent = userData.username || 'Anonymous';
+            document.title = `${userData.username}'s Profile - Syncovids`;
+
+            if (userData.profilePicture) {
+                profileAvatar.src = userData.profilePicture;
+            } else {
+                profileAvatar.src = defaultProfilePic;
+            }
+
+            if (userData.createdAt) {
+                const date = new Date(userData.createdAt);
+                profileJoined.textContent = `Joined ${date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
+            }
+        } else {
+            profileUsername.textContent = 'User not found';
+            profileAvatar.src = defaultProfilePic;
+        }
+    } catch (error) {
+        console.error('Error loading profile:', error);
+        profileUsername.textContent = 'Error loading profile';
+    }
+}
+
+async function loadUserVideos() {
+    try {
+        const userFilesRef = ref(storage, `users/${profileUserId}/files`);
+        const result = await listAll(userFilesRef);
+
+        // Filter for video files only
+        const videoItems = [];
+
+        for (const item of result.items) {
+            if (isVideoFile(item.name)) {
+                try {
+                    const url = await getDownloadURL(item);
+                    const metadata = await getMetadata(item);
+                    videoItems.push({
+                        name: item.name,
+                        fullPath: item.fullPath,
+                        url: url,
+                        metadata: metadata
+                    });
+                } catch (error) {
+                    console.error('Error getting video:', error);
+                }
+            }
+        }
+
+        loading.style.display = 'none';
+
+        videoCount.textContent = `${videoItems.length} video${videoItems.length !== 1 ? 's' : ''}`;
+
+        if (videoItems.length === 0) {
+            noVideos.style.display = 'block';
+            return;
+        }
+
+        // Sort by upload time (newest first)
+        videoItems.sort((a, b) => {
+            const timeA = new Date(a.metadata.timeCreated).getTime();
+            const timeB = new Date(b.metadata.timeCreated).getTime();
+            return timeB - timeA;
+        });
+
+        renderVideos(videoItems);
+    } catch (error) {
+        console.error('Error loading videos:', error);
+        loading.style.display = 'none';
+
+        if (error.code === 'storage/object-not-found') {
+            noVideos.style.display = 'block';
+            videoCount.textContent = '0 videos';
+        }
+    }
+}
+
+function renderVideos(videos) {
+    videosGrid.innerHTML = '';
+
+    videos.forEach(video => {
+        const videoCard = document.createElement('div');
+        videoCard.className = 'video-card';
+
+        const displayName = video.name.replace(/^\d+_/, '');
+        const uploadDate = new Date(video.metadata.timeCreated).toLocaleDateString();
+        const fileSize = formatFileSize(video.metadata.size);
+        const playerUrl = `player.html?path=${encodeURIComponent(video.fullPath)}`;
+
+        videoCard.innerHTML = `
+            <a href="${playerUrl}" class="video-link">
+                <div class="video-wrapper">
+                    <video src="${video.url}" preload="metadata"></video>
+                    <div class="video-overlay">
+                        <button class="play-btn">▶</button>
+                    </div>
+                </div>
+                <div class="video-info">
+                    <h3 class="video-title" title="${displayName}">${displayName}</h3>
+                    <p class="video-meta">${uploadDate} • ${fileSize}</p>
+                </div>
+            </a>
+        `;
+
+        videosGrid.appendChild(videoCard);
+    });
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
