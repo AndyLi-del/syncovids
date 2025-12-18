@@ -1,4 +1,5 @@
-import { auth, storage } from "./firebase-config.js";
+import { db, auth, storage } from "./firebase-config.js";
+import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { ref, listAll, getDownloadURL, getMetadata, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
@@ -21,6 +22,26 @@ function isVideoFile(filename) {
     return videoExtensions.some(ext => lower.endsWith(ext));
 }
 
+// Sync signed-in user to Firestore
+async function syncUserToFirestore(user) {
+    try {
+        const userRef = doc(db, "users", user.uid);
+        const existing = await getDoc(userRef);
+
+        // Only create if missing so we don't overwrite existing data
+        if (!existing.exists()) {
+            await setDoc(userRef, {
+                uid: user.uid,
+                username: user.displayName || user.email.split('@')[0] || 'Anonymous',
+                email: user.email || '',
+                createdAt: new Date().toISOString()
+            });
+        }
+    } catch (error) {
+        console.error('Error syncing user to Firestore:', error);
+    }
+}
+
 // Listen for auth state changes
 onAuthStateChanged(auth, async (user) => {
     if (user) {
@@ -30,6 +51,9 @@ onAuthStateChanged(auth, async (user) => {
         videosBtn.style.display = 'inline-block';
         dashboardBtn.style.display = 'inline-block';
         logoutBtn.style.display = 'inline-block';
+
+        // Ensure user exists in Firestore
+        await syncUserToFirestore(user);
 
         // Load user's videos
         await loadVideos(user.uid);

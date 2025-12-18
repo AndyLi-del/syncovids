@@ -1,5 +1,5 @@
 import { db, auth, storage } from "./firebase-config.js";
-import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
@@ -32,6 +32,26 @@ let currentUser = null;
 // Default profile picture
 const defaultProfilePic = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiMzMzMiLz48Y2lyY2xlIGN4PSI1MCIgY3k9IjM1IiByPSIyMCIgZmlsbD0iIzY2NiIvPjxlbGxpcHNlIGN4PSI1MCIgY3k9Ijk1IiByeD0iMzUiIHJ5PSIzMCIgZmlsbD0iIzY2NiIvPjwvc3ZnPg==';
 
+// Sync signed-in user to Firestore
+async function syncUserToFirestore(user) {
+    try {
+        const userRef = doc(db, "users", user.uid);
+        const existing = await getDoc(userRef);
+
+        // Only create if missing so we don't overwrite existing data
+        if (!existing.exists()) {
+            await setDoc(userRef, {
+                uid: user.uid,
+                username: user.displayName || user.email.split('@')[0] || 'Anonymous',
+                email: user.email || '',
+                createdAt: new Date().toISOString()
+            });
+        }
+    } catch (error) {
+        console.error('Error syncing user to Firestore:', error);
+    }
+}
+
 // Listen for auth state changes
 onAuthStateChanged(auth, async (user) => {
     if (user) {
@@ -46,6 +66,9 @@ onAuthStateChanged(auth, async (user) => {
         // Display user info
         userEmail.textContent = user.email;
         userUid.textContent = user.uid;
+
+        // Ensure user exists in Firestore
+        await syncUserToFirestore(user);
 
         // Get user data from Firestore
         try {
