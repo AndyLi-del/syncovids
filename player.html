@@ -74,6 +74,31 @@
         <div class="video-details">
             <p class="video-meta-info" id="video-meta"></p>
         </div>
+
+        <!-- Comments Section -->
+        <div class="comments-section">
+            <h3 class="comments-title">Comments <span id="comments-count">(0)</span></h3>
+
+            <div class="comment-form" id="comment-form">
+                <div class="comment-input-wrapper">
+                    <img class="comment-avatar" id="current-user-avatar" src="" alt="Your avatar">
+                    <textarea
+                        id="comment-input"
+                        placeholder="Add a comment..."
+                        rows="1"
+                        maxlength="1000"
+                    ></textarea>
+                </div>
+                <div class="comment-actions">
+                    <button class="btn-cancel-comment" id="btn-cancel-comment">Cancel</button>
+                    <button class="btn-submit-comment" id="btn-submit-comment" disabled>Comment</button>
+                </div>
+            </div>
+
+            <div class="comments-list" id="comments-list">
+                <div class="comments-loading" id="comments-loading">Loading comments...</div>
+            </div>
+        </div>
     </div>
 
     <script type="module" src="player.js"></script>
