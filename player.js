@@ -315,7 +315,7 @@ function hideControlsDelayed() {
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
     if (currentMediaType === 'image') return; // No keyboard shortcuts for images
 
     switch (e.key.toLowerCase()) {
