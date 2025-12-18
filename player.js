@@ -453,27 +453,34 @@ function loadComments(filePath) {
         unsubscribeComments();
     }
 
+    // Listen to ALL comments and filter client-side to avoid index requirement
     const commentsRef = collection(db, 'comments');
-    // Simple query without orderBy to avoid composite index requirement
-    const q = query(commentsRef, where('fileId', '==', fileId));
 
-    console.log('Starting onSnapshot listener...');
+    console.log('Starting onSnapshot listener for all comments...');
 
-    unsubscribeComments = onSnapshot(q, (snapshot) => {
-        console.log('Snapshot received, size:', snapshot.size);
+    unsubscribeComments = onSnapshot(commentsRef, (snapshot) => {
+        console.log('Snapshot received, total comments:', snapshot.size);
         commentsLoading.style.display = 'none';
-        commentsCount.textContent = `(${snapshot.size})`;
 
-        // Clear existing comments (except loading)
+        // Clear existing comments
         const existingComments = commentsList.querySelectorAll('.comment-item');
         existingComments.forEach(c => c.remove());
-
-        // Remove "no comments" message if exists
         const noCommentsEl = commentsList.querySelector('.no-comments');
         if (noCommentsEl) noCommentsEl.remove();
 
-        if (snapshot.empty) {
-            console.log('No comments found');
+        // Filter comments for this file client-side
+        const comments = [];
+        snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            if (data.fileId === fileId) {
+                comments.push({ id: docSnap.id, ...data });
+            }
+        });
+
+        console.log('Comments for this file:', comments.length);
+        commentsCount.textContent = `(${comments.length})`;
+
+        if (comments.length === 0) {
             const noComments = document.createElement('div');
             noComments.className = 'no-comments';
             noComments.textContent = 'No comments yet. Be the first to comment!';
@@ -481,18 +488,11 @@ function loadComments(filePath) {
             return;
         }
 
-        // Sort comments by createdAt client-side (newest first)
-        const comments = [];
-        snapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            console.log('Comment data:', data);
-            comments.push({ id: docSnap.id, ...data });
-        });
-
+        // Sort by createdAt (newest first)
         comments.sort((a, b) => {
             const timeA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
             const timeB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-            return timeB - timeA; // Newest first
+            return timeB - timeA;
         });
 
         comments.forEach((comment) => {
@@ -502,28 +502,12 @@ function loadComments(filePath) {
         console.log('Comments rendered successfully');
     }, (error) => {
         console.error('Error loading comments:', error);
-        console.error('Error code:', error.code);
-        console.error('Error message:', error.message);
         commentsLoading.style.display = 'none';
 
-        // Check if it's a permission error
-        if (error.code === 'permission-denied') {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'no-comments';
-            errorDiv.textContent = 'Permission denied. Please check Firestore rules.';
-            commentsList.appendChild(errorDiv);
-        } else if (error.code === 'failed-precondition') {
-            // This usually means an index is required
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'no-comments';
-            errorDiv.textContent = 'Database index required. Check console for details.';
-            commentsList.appendChild(errorDiv);
-        } else {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'no-comments';
-            errorDiv.textContent = 'Unable to load comments: ' + error.message;
-            commentsList.appendChild(errorDiv);
-        }
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'no-comments';
+        errorDiv.textContent = 'Unable to load comments: ' + error.message;
+        commentsList.appendChild(errorDiv);
     });
 }
 
