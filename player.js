@@ -1,6 +1,7 @@
-import { auth, storage } from "./firebase-config.js";
+import { auth, storage, db } from "./firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { ref, getDownloadURL, getMetadata } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+import { collection, addDoc, query, where, orderBy, onSnapshot, deleteDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // Elements
 const playerContainer = document.getElementById('player-container');
@@ -93,14 +94,7 @@ function initializeMediaPlayer(url) {
     }
 }
 
-// Auth check
-onAuthStateChanged(auth, async (user) => {
-    if (user) {
-        loadVideo();
-    } else {
-        window.location.href = 'signin.html';
-    }
-});
+// Auth check is handled at the bottom of the file with comments integration
 
 // Load video from URL params
 async function loadVideo() {
@@ -403,3 +397,248 @@ function formatFileSize(bytes) {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
+
+// ==================== COMMENTS SECTION ====================
+
+// Comment Elements
+const commentInput = document.getElementById('comment-input');
+const btnSubmitComment = document.getElementById('btn-submit-comment');
+const btnCancelComment = document.getElementById('btn-cancel-comment');
+const commentsList = document.getElementById('comments-list');
+const commentsLoading = document.getElementById('comments-loading');
+const commentsCount = document.getElementById('comments-count');
+const currentUserAvatar = document.getElementById('current-user-avatar');
+
+// Current user info
+let currentUser = null;
+let currentUserData = null;
+let currentFilePath = null;
+let unsubscribeComments = null;
+
+// Generate a unique file ID from the path (for Firestore querying)
+function getFileId(path) {
+    // Use a hash-like approach: encode the path to create a valid document ID
+    return btoa(path).replace(/[/+=]/g, '_');
+}
+
+// Load current user data
+async function loadCurrentUserData(user) {
+    currentUser = user;
+    try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+            currentUserData = userDoc.data();
+            // Set current user avatar
+            if (currentUserData.profilePicture) {
+                currentUserAvatar.src = currentUserData.profilePicture;
+            } else {
+                currentUserAvatar.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="%23333"/><circle cx="50" cy="35" r="20" fill="%23666"/><ellipse cx="50" cy="85" rx="35" ry="30" fill="%23666"/></svg>';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading user data:', error);
+    }
+}
+
+// Load comments for the current file
+function loadComments(filePath) {
+    currentFilePath = filePath;
+    const fileId = getFileId(filePath);
+
+    // Unsubscribe from previous listener if exists
+    if (unsubscribeComments) {
+        unsubscribeComments();
+    }
+
+    const commentsRef = collection(db, 'comments');
+    const q = query(
+        commentsRef,
+        where('fileId', '==', fileId),
+        orderBy('createdAt', 'desc')
+    );
+
+    unsubscribeComments = onSnapshot(q, (snapshot) => {
+        commentsLoading.style.display = 'none';
+        commentsCount.textContent = `(${snapshot.size})`;
+
+        // Clear existing comments (except loading)
+        const existingComments = commentsList.querySelectorAll('.comment-item');
+        existingComments.forEach(c => c.remove());
+
+        if (snapshot.empty) {
+            const noComments = document.createElement('div');
+            noComments.className = 'no-comments';
+            noComments.textContent = 'No comments yet. Be the first to comment!';
+            commentsList.appendChild(noComments);
+            return;
+        }
+
+        // Remove "no comments" message if exists
+        const noCommentsEl = commentsList.querySelector('.no-comments');
+        if (noCommentsEl) noCommentsEl.remove();
+
+        snapshot.forEach((docSnap) => {
+            const comment = docSnap.data();
+            const commentEl = createCommentElement(docSnap.id, comment);
+            commentsList.appendChild(commentEl);
+        });
+    }, (error) => {
+        console.error('Error loading comments:', error);
+        commentsLoading.textContent = 'Error loading comments';
+    });
+}
+
+// Create a comment element
+function createCommentElement(commentId, comment) {
+    const div = document.createElement('div');
+    div.className = 'comment-item';
+    div.dataset.commentId = commentId;
+
+    const avatar = comment.userProfilePicture || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="%23333"/><circle cx="50" cy="35" r="20" fill="%23666"/><ellipse cx="50" cy="85" rx="35" ry="30" fill="%23666"/></svg>';
+
+    const timeAgo = formatTimeAgo(comment.createdAt?.toDate ? comment.createdAt.toDate() : new Date(comment.createdAt));
+
+    const isOwner = currentUser && comment.userId === currentUser.uid;
+
+    div.innerHTML = `
+        <img class="comment-avatar" src="${avatar}" alt="${comment.username}'s avatar">
+        <div class="comment-content">
+            <div class="comment-header">
+                <span class="comment-author">${escapeHtml(comment.username)}</span>
+                <span class="comment-time">${timeAgo}</span>
+                ${isOwner ? `<button class="btn-delete-comment" data-id="${commentId}" title="Delete comment">Delete</button>` : ''}
+            </div>
+            <p class="comment-text">${escapeHtml(comment.text)}</p>
+        </div>
+    `;
+
+    // Add delete handler if owner
+    if (isOwner) {
+        const deleteBtn = div.querySelector('.btn-delete-comment');
+        deleteBtn.addEventListener('click', () => deleteComment(commentId));
+    }
+
+    return div;
+}
+
+// Submit a new comment
+async function submitComment() {
+    const text = commentInput.value.trim();
+    if (!text || !currentUser || !currentFilePath) return;
+
+    btnSubmitComment.disabled = true;
+    btnSubmitComment.textContent = 'Posting...';
+
+    try {
+        const fileId = getFileId(currentFilePath);
+        await addDoc(collection(db, 'comments'), {
+            fileId: fileId,
+            filePath: currentFilePath,
+            userId: currentUser.uid,
+            username: currentUserData?.username || currentUser.displayName || 'Anonymous',
+            userProfilePicture: currentUserData?.profilePicture || null,
+            text: text,
+            createdAt: new Date()
+        });
+
+        commentInput.value = '';
+        commentInput.style.height = 'auto';
+        btnSubmitComment.textContent = 'Comment';
+        btnCancelComment.click(); // Reset form state
+    } catch (error) {
+        console.error('Error posting comment:', error);
+        alert('Failed to post comment. Please try again.');
+        btnSubmitComment.disabled = false;
+        btnSubmitComment.textContent = 'Comment';
+    }
+}
+
+// Delete a comment
+async function deleteComment(commentId) {
+    if (!confirm('Are you sure you want to delete this comment?')) return;
+
+    try {
+        await deleteDoc(doc(db, 'comments', commentId));
+    } catch (error) {
+        console.error('Error deleting comment:', error);
+        alert('Failed to delete comment. Please try again.');
+    }
+}
+
+// Format time ago
+function formatTimeAgo(date) {
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+
+    if (seconds < 60) return 'Just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)} days ago`;
+
+    return date.toLocaleDateString();
+}
+
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Comment form event listeners
+commentInput.addEventListener('input', () => {
+    btnSubmitComment.disabled = commentInput.value.trim().length === 0;
+
+    // Auto-resize textarea
+    commentInput.style.height = 'auto';
+    commentInput.style.height = commentInput.scrollHeight + 'px';
+});
+
+commentInput.addEventListener('focus', () => {
+    document.querySelector('.comment-actions').style.display = 'flex';
+});
+
+btnCancelComment.addEventListener('click', () => {
+    commentInput.value = '';
+    commentInput.style.height = 'auto';
+    btnSubmitComment.disabled = true;
+    document.querySelector('.comment-actions').style.display = 'none';
+    commentInput.blur();
+});
+
+btnSubmitComment.addEventListener('click', submitComment);
+
+// Allow Ctrl+Enter to submit
+commentInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        if (!btnSubmitComment.disabled) {
+            submitComment();
+        }
+    }
+});
+
+// Initialize comments when media loads
+const originalLoadVideo = loadVideo;
+async function loadVideoWithComments() {
+    await originalLoadVideo.call(this);
+
+    // Get file path from URL params
+    const params = new URLSearchParams(window.location.search);
+    const filePath = params.get('path');
+
+    if (filePath && currentUser) {
+        loadComments(filePath);
+    }
+}
+
+// Override auth state handler to load user data and comments
+const originalOnAuthStateChanged = onAuthStateChanged;
+onAuthStateChanged(auth, async (user) => {
+    if (user) {
+        await loadCurrentUserData(user);
+        loadVideoWithComments();
+    } else {
+        window.location.href = 'signin.html';
+    }
+});
