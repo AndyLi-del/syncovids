@@ -1,5 +1,5 @@
 import { db, auth } from "./firebase-config.js";
-import { collection, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import {
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
@@ -88,6 +88,22 @@ form.addEventListener('submit', async (e) => {
         if (isLoginMode) {
             // Secure login with Firebase Auth
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+
+            // Check if user exists in Firestore, if not create their document
+            const userDocRef = doc(db, "users", user.uid);
+            const userDocSnap = await getDoc(userDocRef);
+
+            if (!userDocSnap.exists()) {
+                // User exists in Auth but not in Firestore, create their document
+                await setDoc(userDocRef, {
+                    username: user.displayName || user.email.split('@')[0],
+                    email: user.email,
+                    createdAt: new Date().toISOString(),
+                    uid: user.uid
+                });
+            }
+
             message.textContent = 'Login successful!';
             message.className = 'success';
             form.reset();
